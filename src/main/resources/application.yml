@@ -1,1 +1,23 @@
+spring:
+  application:
+    name: Cash-In
+  jpa:
+    show-sql: true
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate.jdbc.time_zone: UTC
+      hibernate.id.new_generator_mappings: true
+  datasource:
+    name: cashin
+    generate-unique-name: false
 
+debug: false
+
+logging:
+  level:
+    org.springframework: info
+    org.springframework.web: info
+    org.springframework.security: info
+    org.hibernate.sql: debug
