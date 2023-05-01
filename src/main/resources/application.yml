@@ -1,6 +1,6 @@
 spring:
   application:
-    name: Cash-In
+    name: cash-in
   jpa:
     show-sql: true
     hibernate:
@@ -21,3 +21,10 @@ logging:
     org.springframework.web: info
     org.springframework.security: info
     org.hibernate.sql: debug
+
+management:
+  endpoints:
+    enabled-by-default: true
+    web:
+      exposure:
+        include: info, health

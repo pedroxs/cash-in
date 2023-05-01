@@ -7,7 +7,7 @@ import java.time.Instant;
 import java.util.List;
 
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
-    List<Transaction> findByCustomer_ExternalIdAndTimestampGreaterThanEqual(Long externalId, Instant timestamp);
+    List<Transaction> findByCustomer_ExternalIdAndTimestampGreaterThan(Long externalId, Instant timestamp);
 
     boolean existsByLoadIdAndCustomer_ExternalId(Long loadId, Long externalId);
 

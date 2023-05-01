@@ -10,13 +10,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalAdjusters;
+import java.time.temporal.WeekFields;
 import java.util.List;
 import java.util.Optional;
 
 @Service
 public class ProcessTransactions {
+
+    private static final DayOfWeek firstDayOfWeek = WeekFields.ISO.getFirstDayOfWeek();
+
     private static final Logger log = LoggerFactory.getLogger(ProcessTransactions.class);
     private final TransactionRepository transactionRepository;
     private final CustomerRepository customerRepository;
@@ -41,24 +48,31 @@ public class ProcessTransactions {
             transaction.setCustomer(createNewCustomer(loadRequest.getCustomerId()));
         }
 
-        try {
-            checkVelocity(transaction);
+
+        Optional<String> velocity = checkVelocity(transaction);
+        if (velocity.isPresent()) {
+            log.info("Transaction not accepted: {}", velocity.get());
+            transaction.setAccepted(false);
+        } else {
             transaction.setAccepted(true);
             updateCustomerBalance(transaction);
-        } catch (Exception e) {
-            log.info("Transaction not accepted", e);
-            transaction.setAccepted(false);
         }
 
         return transactionRepository.save(transaction);
     }
 
-    private void checkVelocity(Transaction transaction) {
+    private Optional<String> checkVelocity(Transaction transaction) {
         Instant endOfYesterday = transaction.getTimestamp().truncatedTo(ChronoUnit.DAYS).minus(1, ChronoUnit.SECONDS);
+        Instant startOfWeek = transaction.getTimestamp()
+                .truncatedTo(ChronoUnit.DAYS)
+                .atOffset(ZoneOffset.UTC)
+                .with(TemporalAdjusters.previousOrSame(firstDayOfWeek))
+                .minus(1, ChronoUnit.SECONDS)
+                .toInstant();
 
-        List<Transaction> transactions = transactionRepository.findByCustomer_ExternalIdAndTimestampGreaterThanEqual(
+        List<Transaction> transactions = transactionRepository.findByCustomer_ExternalIdAndTimestampGreaterThan(
                 transaction.getCustomer().getExternalId(),
-                endOfYesterday.minus(7, ChronoUnit.DAYS)
+                startOfWeek
         );
 
         transactions.add(transaction);
@@ -67,8 +81,7 @@ public class ProcessTransactions {
                 .filter(trx -> trx.getTimestamp().isAfter(endOfYesterday))
                 .count();
         if (countTrxToday > 3) {
-            //FIXME: avoid using throw pattern
-            throw new RuntimeException("too many transactions");
+            return Optional.of("too many transactions");
         }
 
         BigDecimal amountTrxToday = transactions.stream()
@@ -77,19 +90,19 @@ public class ProcessTransactions {
                 .map(Transaction::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (amountTrxToday.compareTo(new BigDecimal("5000")) > 0) {
-            //FIXME: avoid using throw pattern
-            throw new RuntimeException("reached capacity for the day");
+            return Optional.of("reached capacity for the day");
         }
 
         BigDecimal amountTrxWeek = transactions.stream()
-                .filter(trx -> trx.getTimestamp().isAfter(endOfYesterday.minus(6, ChronoUnit.DAYS)))
+                .filter(trx -> trx.getTimestamp().isAfter(startOfWeek))
                 .filter(trx -> null == trx.getAccepted() || trx.getAccepted())
                 .map(Transaction::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (amountTrxWeek.compareTo(new BigDecimal("20000")) > 0) {
-            //FIXME: avoid using throw pattern
-            throw new RuntimeException("reached capacity for the week");
+            return Optional.of("reached capacity for the week");
         }
+
+        return Optional.empty();
     }
 
     private void updateCustomerBalance(Transaction transaction) {
